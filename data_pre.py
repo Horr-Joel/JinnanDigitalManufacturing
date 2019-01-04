@@ -12,6 +12,7 @@ def data_pre():
     train = pd.read_csv('input/jinnan_round1_train_20181227.csv', encoding='gb2312')
     test = pd.read_csv('input/jinnan_round1_testA_20181227.csv', encoding='gb2312')
 
+
     # 部分异常值处理，其他的在文件中修改
     train.iloc[314,9] = '0:00:00'
     train.iloc[386,5] = '20:30:00'
@@ -37,9 +38,11 @@ def data_pre():
     col = train.columns.tolist()[1:-1]
     del_col = []
     for each in col:
-        if (train[each].count()==train.shape[0] and train[each].nunique()==1) or \
+        if (train[each].count()==train.shape[0] and train[each].nunique() == 1) or \
                 (test[each].count() == test.shape[0] and test[each].nunique() == 1):
             del_col.append(each)
+
+    train = train[train['收率'] > 0.87]
 
     data = pd.concat([train,test])
     data = data[[col for col in data.columns if col not in del_col]]
@@ -82,4 +85,21 @@ def data_pre():
 
     data.drop('A5',axis=1,inplace=True)
 
-    return data.loc[:train.shape[0]], data.iloc[train.shape[0]:]
+
+    train = data.iloc[:train.shape[0]]
+
+    interest = pd.cut(train['收率'],5,labels=False)
+
+    interest = pd.get_dummies(interest,prefix='interest')
+    cate_fea = [col for col in train.columns if col != '样本id' and col != '收率']
+    train = pd.concat([train, interest], axis=1)
+    print(train)
+    for col in cate_fea:
+        for col2 in interest.columns:
+            tmp = train.groupby(col)[col2].mean()
+            data[col+col2+'_mean'] = data[col].map(tmp)
+
+    data['id'] = data['样本id'].apply(lambda x: int(x.split('_')[1]))
+
+
+    return data.iloc[:train.shape[0]], data.iloc[train.shape[0]:]

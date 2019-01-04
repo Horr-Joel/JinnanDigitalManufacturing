@@ -6,6 +6,7 @@ from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
 train, test = data_pre()
 
+
 label = train['收率']
 test_id = test['样本id']
 del test['样本id']
@@ -13,13 +14,17 @@ del test['收率']
 del train['样本id']
 del train['收率']
 
+
+train.fillna(-1, inplace=True)
+test.fillna(-1, inplace=True)
+
 # 五折交叉验证
 folds = KFold(n_splits=5, shuffle=True, random_state=2018)
 oof = np.zeros(len(train))
 predictions = np.zeros(len(test))
 
 
-param = {'num_leaves': 30,
+param = {'num_leaves': 120,
          'min_data_in_leaf': 30,
          'objective':'regression',
          'max_depth': -1,
