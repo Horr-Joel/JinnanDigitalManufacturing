@@ -35,6 +35,7 @@ def data_pre():
 
     test.iloc[86,5] = '22:00:00'
 
+    train = train[train['收率'] > 0.87]
     col = train.columns.tolist()[1:-1]
     del_col = []
     for each in col:
@@ -42,9 +43,8 @@ def data_pre():
                 (test[each].count() == test.shape[0] and test[each].nunique() == 1):
             del_col.append(each)
 
-    train = train[train['收率'] > 0.87]
-
     data = pd.concat([train,test])
+    all = data
     data = data[[col for col in data.columns if col not in del_col]]
 
 
@@ -102,4 +102,32 @@ def data_pre():
     data['id'] = data['样本id'].apply(lambda x: int(x.split('_')[1]))
 
 
+
+    copy_col = ['B12', 'B14', 'A6', 'B9', 'B10', 'B11']
+    all = all.sort_values('样本id', ascending=True)
+    all['b14_div_a1_a2_a3_a4_a19_b1b2_b12b13'] = all['B14'] / (
+                all['A1'] + all['A2'] + all['A3'] + all['A4'] + all['A19'] + all['B1'] * all['B2'] + all['B12'] * all[
+            'B13'])
+
+    ids = all['样本id'].values
+
+    all_copy_previous_row = all[copy_col].copy()
+
+    all_copy_previous_row['time_mean'] = all_copy_previous_row[['B9', 'B10', 'B11']].std(axis=1)
+    all_copy_previous_row.drop(['B9', 'B10', 'B11'], axis=1, inplace=True)
+    all_copy_previous_row = all_copy_previous_row.diff(periods=1)
+    all_copy_previous_row.columns = [col_ + '_difference' + '_previous' for col_ in
+                                     all_copy_previous_row.columns.values]
+    all_copy_following_row = all[copy_col].copy()
+    all_copy_following_row['time_mean'] = all_copy_following_row[['B9', 'B10', 'B11']].std(axis=1)
+    all_copy_following_row.drop(['B9', 'B10', 'B11'], axis=1, inplace=True)
+
+    all_copy_following_row = all_copy_following_row.diff(periods=-1)
+    all_copy_following_row.columns = [col_ + '_difference' + '_following' for col_ in
+                                      all_copy_following_row.columns.values]
+    # all_copy_following_row['样本id_difference_following'] = all_copy_following_row['样本id_difference_following'].abs()
+    all_copy_following_row['样本id'] = list(ids)
+    all_copy_following_row.drop('time_mean_difference_following',axis=1,inplace=True)
+
+    data = data.merge(all_copy_following_row,on='样本id',how='left')
     return data.iloc[:train.shape[0]], data.iloc[train.shape[0]:]

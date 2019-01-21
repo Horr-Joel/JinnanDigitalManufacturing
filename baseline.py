@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
+import xgboost as xgb
 train, test = data_pre()
 
 
@@ -20,8 +21,8 @@ test.fillna(-1, inplace=True)
 
 # 五折交叉验证
 folds = KFold(n_splits=5, shuffle=True, random_state=2018)
-oof = np.zeros(len(train))
-predictions = np.zeros(len(test))
+oof_lgb = np.zeros(len(train))
+predictions_lgb = np.zeros(len(test))
 
 
 param = {'num_leaves': 120,
@@ -54,13 +55,44 @@ for fold_, (trn_idx, val_idx) in enumerate(folds.split(X_train, y_train)):
                     valid_sets=[trn_data, val_data],
                     verbose_eval=200,
                     early_stopping_rounds=100)
-    oof[val_idx] = clf.predict(X_train[val_idx], num_iteration=clf.best_iteration)
+    oof_lgb[val_idx] = clf.predict(X_train[val_idx], num_iteration=clf.best_iteration)
 
-    predictions += clf.predict(X_test, num_iteration=clf.best_iteration) / folds.n_splits
+    predictions_lgb += clf.predict(X_test, num_iteration=clf.best_iteration) / folds.n_splits
 
-print("CV score: {:<8.5f}".format(mean_squared_error(oof, y_train)))
+print("lgb CV score: {:<8.5f}".format(mean_squared_error(oof_lgb, y_train)))
+
+xgb_params = {'eta': 0.005, 'max_depth': 10, 'subsample': 0.8, 'colsample_bytree': 0.8,
+              'objective': 'reg:linear', 'eval_metric': 'rmse', 'silent': True, 'nthread': 4}
+
+folds = KFold(n_splits=5, shuffle=True, random_state=2018)
+oof_xgb = np.zeros(len(train))
+predictions_xgb = np.zeros(len(test))
+
+for fold_, (trn_idx, val_idx) in enumerate(folds.split(X_train, y_train)):
+    print("fold n°{}".format(fold_ + 1))
+    trn_data = xgb.DMatrix(X_train[trn_idx], y_train[trn_idx])
+    val_data = xgb.DMatrix(X_train[val_idx], y_train[val_idx])
+
+    watchlist = [(trn_data, 'train'), (val_data, 'valid_data')]
+    clf = xgb.train(dtrain=trn_data, num_boost_round=20000, evals=watchlist, early_stopping_rounds=200,
+                    verbose_eval=100, params=xgb_params)
+    oof_xgb[val_idx] = clf.predict(xgb.DMatrix(X_train[val_idx]), ntree_limit=clf.best_ntree_limit)
+    predictions_xgb += clf.predict(xgb.DMatrix(X_test), ntree_limit=clf.best_ntree_limit) / folds.n_splits
+
+print("xgb CV score: {:<8.8f}".format(mean_squared_error(oof_xgb, y_train)))
+
+
+
+from  merge import find_best_weight
+
+res = find_best_weight([oof_lgb, oof_xgb], y_train)
+
+predictions = predictions_lgb * res.x[0] + predictions_xgb * res.x[1]
 
 # 提交结果
 sub_df = pd.read_csv('input/jinnan_round1_submit_20181227.csv', header=None)
 sub_df[1] = predictions
 sub_df.to_csv("sub.csv", index=False, header=None)
+
+
+
